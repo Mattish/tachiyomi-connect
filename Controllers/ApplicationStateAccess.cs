@@ -76,6 +76,11 @@ namespace TachiyomiConnect.Controllers
 
         }
 
+        private static JsonSerializerSettings jsonSettings = new JsonSerializerSettings()
+        {
+            TypeNameHandling = TypeNameHandling.Objects
+        };
+
         private static TachiyomiDbState GetDbState()
         {
             if (!File.Exists(DbFileName))
@@ -83,12 +88,12 @@ namespace TachiyomiConnect.Controllers
                 WriteDbState(new TachiyomiDbState());
             }
             var text = File.ReadAllText(DbFileName);
-            return JsonConvert.DeserializeObject<TachiyomiDbState>(text);
+            return JsonConvert.DeserializeObject<TachiyomiDbState>(text, jsonSettings);
         }
 
         private static void WriteDbState(TachiyomiDbState state)
         {
-            var json = JsonConvert.SerializeObject(state);
+            var json = JsonConvert.SerializeObject(state, jsonSettings);
             File.WriteAllText(DbFileName, json);
         }
 
