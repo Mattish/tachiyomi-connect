@@ -10,11 +10,11 @@ namespace TachiyomiConnect.Controllers
 {
     public class AccountDevice
     {
-        public Guid DeviceId { get; }
+        public Guid DeviceId { get; set; }
 
-        public string SecretToken { get; }
+        public string SecretToken { get; set; }
 
-        public Guid RecoveryCode { get; }
+        public Guid RecoveryCode { get; set; }
 
         public AccountDevice(Guid deviceId, string secretToken, Guid recoveryCode)
         {
@@ -46,8 +46,8 @@ namespace TachiyomiConnect.Controllers
     }
     public class Account
     {
-        public readonly List<AccountDevice> Devices;
-        public List<StateResponseDto> SyncStates;
+        public List<AccountDevice> Devices { get; set; }
+        public List<StateResponseDto> SyncStates { get; set; }
 
         public Account(List<AccountDevice> devices, StateResponseDto initialState)
         {
