@@ -46,11 +46,13 @@ namespace TachiyomiConnect.Controllers
     }
     public class Account
     {
+        public Guid Id { get; set; }
         public List<AccountDevice> Devices { get; set; }
         public List<StateResponseDto> SyncStates { get; set; }
 
-        public Account(List<AccountDevice> devices, StateResponseDto initialState)
+        public Account(Guid id, List<AccountDevice> devices, StateResponseDto initialState)
         {
+            Id = id;
             Devices = devices;
             SyncStates = new List<StateResponseDto>(new[] { initialState });
         }
@@ -61,12 +63,12 @@ namespace TachiyomiConnect.Controllers
     {
         public string Code { get; }
         public DateTimeOffset ValidUntil { get; }
-        public Account Account { get; }
-        public TimedAccountCode(string code, DateTimeOffset validUntil, Account account)
+        public Guid AccountId { get; }
+        public TimedAccountCode(string code, DateTimeOffset validUntil, Guid accountId)
         {
             Code = code;
             ValidUntil = validUntil;
-            Account = account;
+            AccountId = accountId;
         }
 
         protected bool Equals(TimedAccountCode other)
@@ -90,7 +92,7 @@ namespace TachiyomiConnect.Controllers
 
     public class TachiyomiDbState
     {
-        public Dictionary<AccountDevice, Account> AccountDeviceToAccount = new Dictionary<AccountDevice, Account>();
+        public List<Account> Accounts = new List<Account>();
         public Dictionary<Guid, AccountDevice> RecoveryCodeToAccountDevice = new Dictionary<Guid, AccountDevice>();
     }
 
@@ -176,8 +178,7 @@ namespace TachiyomiConnect.Controllers
                 return BadRequest(
                     $"The Version Number of '{stateResponseChange.VersionNumber}' is not expected. Expected:{account.SyncStates.Last().VersionNumber + 1}");
             }
-
-            account.SyncStates.Add(stateResponseChange);
+            ApplicationStateAccess.AddSyncStateToAccount(account, stateResponseChange);
             return new JsonResult(account.SyncStates.Last());
         }
 
@@ -193,7 +194,7 @@ namespace TachiyomiConnect.Controllers
             string secretToken = Convert.ToBase64String(tokenData);
 
             var newDevice = new AccountDevice(deviceId, secretToken, recoveryCode);
-            var newAccount = new Account(new List<AccountDevice>(new[] { newDevice }), stateResponseChange);
+            var newAccount = new Account(Guid.NewGuid(), new List<AccountDevice>(new[] { newDevice }), stateResponseChange);
             ApplicationStateAccess.RegisterNewAccount(newDevice, newAccount, recoveryCode);
 
             var registrationResponseDto = new RegistrationResponseDto
@@ -245,15 +246,14 @@ namespace TachiyomiConnect.Controllers
             Rng.GetBytes(tokenData);
             string secretToken = Convert.ToBase64String(tokenData);
             var accountDevice = new AccountDevice(deviceId, secretToken, recoveryCode);
-            if (ApplicationStateAccess.TryAddAccountDevice(accountDevice, accountCode, out var timedAccountCode))
+            if (ApplicationStateAccess.TryAddAccountDevice(accountDevice, accountCode) && ApplicationStateAccess.TryGetAccount(accountDevice, out var account))
             {
-
                 var registrationResponseDto = new RegistrationResponseDto
                 {
                     DeviceId = accountDevice.DeviceId,
                     RecoveryCode = accountDevice.RecoveryCode,
                     SecretToken = accountDevice.SecretToken,
-                    InitialState = timedAccountCode.Account.SyncStates.First()
+                    InitialState = account.SyncStates.First()
                 };
                 return new JsonResult(registrationResponseDto);
             }
@@ -272,7 +272,7 @@ namespace TachiyomiConnect.Controllers
 
             byte[] tokenData = new byte[4];
             Rng.GetBytes(tokenData);
-            var timedAccountCode = new TimedAccountCode(ByteArrayToHexString(tokenData), DateTimeOffset.UtcNow.AddMinutes(1), account);
+            var timedAccountCode = new TimedAccountCode(ByteArrayToHexString(tokenData), DateTimeOffset.UtcNow.AddMinutes(1), account.Id);
 
             ApplicationStateAccess.AddTimedAccountCode(timedAccountCode);
 

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
-using Remotion.Linq.Parsing.ExpressionVisitors.Transformation.PredefinedTransformations;
+using TachiyomiConnect.Dtos;
 
 namespace TachiyomiConnect.Controllers
 {
@@ -19,13 +19,8 @@ namespace TachiyomiConnect.Controllers
             lock (dbLock)
             {
                 var dbState = GetDbState();
-                if (dbState.AccountDeviceToAccount.TryGetValue(accountDevice, out account))
-                {
-                    WriteDbState(dbState);
-                    return true;
-                }
-
-                return false;
+                account = dbState.Accounts.FirstOrDefault(x => x.Devices.Contains(accountDevice));
+                return account != null;
             }
         }
 
@@ -34,7 +29,7 @@ namespace TachiyomiConnect.Controllers
             lock (dbLock)
             {
                 var dbState = GetDbState();
-                dbState.AccountDeviceToAccount[device] = account;
+                dbState.Accounts.Add(account);
                 dbState.RecoveryCodeToAccountDevice[recoveryCode] = device;
                 WriteDbState(dbState);
             }
@@ -49,21 +44,24 @@ namespace TachiyomiConnect.Controllers
             }
         }
 
-        public static bool TryAddAccountDevice(AccountDevice accountDevice, string accountCode, out TimedAccountCode timedAccountCode)
+        public static bool TryAddAccountDevice(AccountDevice accountDevice, string accountCode)
         {
             timedAccountCodes = timedAccountCodes.Where(x => x.ValidUntil > DateTimeOffset.UtcNow).ToList();
 
-            timedAccountCode = timedAccountCodes.FirstOrDefault(x => x.Code == accountCode);
+            var foundTimedAccountCode = timedAccountCodes.FirstOrDefault(x => x.Code == accountCode);
 
-            if (timedAccountCode != null)
+            if (foundTimedAccountCode != null)
             {
                 lock (dbLock)
                 {
                     var dbState = GetDbState();
-                    dbState.AccountDeviceToAccount[accountDevice] = timedAccountCode.Account;
-                    timedAccountCode.Account.Devices.Add(accountDevice);
-                    WriteDbState(dbState);
-                    return true;
+                    var existingAccount = dbState.Accounts.FirstOrDefault(x => x.Id == foundTimedAccountCode.AccountId);
+                    if (existingAccount != null)
+                    {
+                        existingAccount.Devices.Add(accountDevice);
+                        WriteDbState(dbState);
+                        return true;
+                    }
                 }
             }
 
@@ -73,12 +71,23 @@ namespace TachiyomiConnect.Controllers
 
         public static void AddTimedAccountCode(TimedAccountCode timedAccountCode)
         {
+            timedAccountCodes.Add(timedAccountCode);
+        }
 
+        public static void AddSyncStateToAccount(Account account, StateResponseDto dto)
+        {
+            lock (dbLock)
+            {
+                var dbState = GetDbState();
+                var existingAccount = dbState.Accounts.First(x => x.Id == account.Id);
+                existingAccount.SyncStates.Add(dto);
+                WriteDbState(dbState);
+            }
         }
 
         private static JsonSerializerSettings jsonSettings = new JsonSerializerSettings()
         {
-            TypeNameHandling = TypeNameHandling.Objects
+            TypeNameHandling = TypeNameHandling.Auto
         };
 
         private static TachiyomiDbState GetDbState()
